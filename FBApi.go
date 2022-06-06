@@ -2,50 +2,114 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
-	"os"
+	"strconv"
+
+	"github.com/gorilla/mux"
 )
 
-// A Response struct to map the Entire Response
-type Response struct {
-	Name    string    `json:"name"`
-	Pokemon []Pokemon `json:"pokemon_entries"`
+// Book struct (Model)
+type Book struct {
+	ID     string  `json:"id"`
+	Isbn   string  `json:"isbn"`
+	Title  string  `json:"title"`
+	Author *Author `json:"author"`
 }
 
-// A Pokemon Struct to map every pokemon to.
-type Pokemon struct {
-	EntryNo int            `json:"entry_number"`
-	Species PokemonSpecies `json:"pokemon_species"`
+// Author struct
+type Author struct {
+	Firstname string `json:"firstname"`
+	Lastname  string `json:"lastname"`
 }
 
-// A struct to map our Pokemon's Species which includes it's name
-type PokemonSpecies struct {
-	Name string `json:"name"`
+// Init books var as a slice Book struct
+var books []Book
+
+// Get all books
+func getBooks(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(books)
 }
 
+// Get single book
+func getBook(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	params := mux.Vars(r) // Gets params
+	// Loop through books and find one with the id from the params
+	for _, item := range books {
+		if item.ID == params["id"] {
+			json.NewEncoder(w).Encode(item)
+			return
+		}
+	}
+	json.NewEncoder(w).Encode(&Book{})
+}
+
+// Add new book
+func createBook(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var book Book
+	_ = json.NewDecoder(r.Body).Decode(&book)
+	book.ID = strconv.Itoa(rand.Intn(100000000)) // Mock ID - not safe
+	books = append(books, book)
+	json.NewEncoder(w).Encode(book)
+}
+
+// Update book
+func updateBook(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	params := mux.Vars(r)
+	for index, item := range books {
+		if item.ID == params["id"] {
+			books = append(books[:index], books[index+1:]...)
+			var book Book
+			_ = json.NewDecoder(r.Body).Decode(&book)
+			book.ID = params["id"]
+			books = append(books, book)
+			json.NewEncoder(w).Encode(book)
+			return
+		}
+	}
+}
+
+// Delete book
+func deleteBook(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	params := mux.Vars(r)
+	for index, item := range books {
+		if item.ID == params["id"] {
+			books = append(books[:index], books[index+1:]...)
+			break
+		}
+	}
+	json.NewEncoder(w).Encode(books)
+}
+
+// Main function
 func main() {
-	response, err := http.Get("http://pokeapi.co/api/v2/pokedex/kanto/")
-	if err != nil {
-		fmt.Print(err.Error())
-		os.Exit(1)
-	}
+	// Init router
+	r := mux.NewRouter()
 
-	responseData, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// Hardcoded data - @todo: add database
+	books = append(books, Book{ID: "1", Isbn: "438227", Title: "Book One", Author: &Author{Firstname: "John", Lastname: "Doe"}})
+	books = append(books, Book{ID: "2", Isbn: "454555", Title: "Book Two", Author: &Author{Firstname: "Steve", Lastname: "Smith"}})
 
-	var responseObject Response
-	json.Unmarshal(responseData, &responseObject)
+	// Route handles & endpoints
+	r.HandleFunc("/books", getBooks).Methods("GET")
+	r.HandleFunc("/books/{id}", getBook).Methods("GET")
+	r.HandleFunc("/books", createBook).Methods("POST")
+	r.HandleFunc("/books/{id}", updateBook).Methods("PUT")
+	r.HandleFunc("/books/{id}", deleteBook).Methods("DELETE")
 
-	fmt.Println(responseObject.Name)
-	fmt.Println(len(responseObject.Pokemon))
-
-	for i := 0; i < len(responseObject.Pokemon); i++ {
-		fmt.Println(responseObject.Pokemon[i].Species.Name)
-	}
-
+	// Start server
+	log.Fatal(http.ListenAndServe(":8000", r))
 }
+
+// Request sample
+// {
+// 	"isbn":"4545454",
+// 	"title":"Book Three",
+// 	"author":{"firstname":"Harry","lastname":"White"}
+// }
